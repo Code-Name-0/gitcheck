@@ -1,0 +1,115 @@
+#!/bin/bash
+
+
+
+
+
+## checking if gxmessage is installed
+#if ! command -v gxmessage > /dev/null 2>&1
+#then
+#	echo "you need to install gsmessage first"
+#	echo "on debian run:"
+#	echo "			$ sudo apt-get install gxmessage"
+#	echo "on arch run:"
+#	echo "			$ sudo pacman -S gxmessage"
+#	exit
+#fi
+
+
+## checking if zenity is installed
+if ! command -v zenity > /dev/null 2>&1
+then
+	echo "you need to install zenity first"
+	echo "on debian run:"
+	echo "			$ sudo apt-get install zenity"
+	echo "on arch run:"
+	echo "			$ sudo pacman -S zenity"
+	exit
+fi
+
+## setting configuration 
+
+if ! ls -a /home/$(whoami) | grep .gitcheck.conf > /dev/null 2>&1
+then
+	echo "enter the absolute path of your git directory: "
+	read repo_path
+	echo "PATH=${repo_path}" > /home/$(whoami)/.gitcheck.conf
+fi
+
+path=$(cat /home/$(whoami)/.gitcheck.conf | grep PATH | cut -d '=' -f2)
+cd $path
+
+
+## getting current branch
+current_branch=$(git rev-parse --abbrev-ref HEAD)
+
+
+
+git remote update > /dev/null 2>&1 
+stat=$(git status | grep Your | cut -d ' ' -f4)
+
+
+## getting list of remote branches
+git branch -a | grep remotes > .remote;
+sed -i "s/remotes\/origin\/HEAD.*//" .remote
+remote_branchs=$(cat .remote | grep remotes | cut -d '/' -f3 | xargs)
+
+echo $remote_branchs > .remote
+
+
+
+## getting list of local branches
+git branch > .local
+sed -i "s/^\*//" .local
+local_branchs=$(cat .local | xargs)
+echo $local_branchs > .local
+
+
+missing_branchs=$(diff .local .remote | grep '>' | sed 's/> //' | sed "s/^${local_branchs} //")
+
+rm .local .remote 
+
+
+#notify-send "My name is bash and I rock da house"
+
+
+final_msg=""
+
+
+if [ "$missing_branchs" != "" ]
+then
+	final_msg+="New Branchs Added to the project:
+			${missing_branchs}\n"
+fi
+
+for branch in $local_branchs
+do
+	git checkout $branch > /dev/null 2>&1
+	git status > .tmp
+	stat=$(cat .tmp | grep Your | cut -d' ' -f4)
+	rm .tmp
+	if [ "$stat" != "up" ]
+	then
+		if [ "$stat" == "behind" ]
+		then
+			final_msg+="branch ${branch} is BEHIND, consider running git pull\n"
+		else
+			final_msg+="branch ${branch} is AHEAD, consider running git push\n"
+		fi
+	fi
+done
+
+if [ "$final_msg" != "" ]
+then
+	final_msg+="
+
+
+	made with love by Code-Name-0"
+	echo $final_msg
+	zenity --warning --text="$final_msg" --width=300 --height=150 > /dev/null 2>&1 &
+	#gxmessage $final_msg
+fi
+
+## return to branch
+
+git checkout ${current_branch} > /dev/null 2>&1
